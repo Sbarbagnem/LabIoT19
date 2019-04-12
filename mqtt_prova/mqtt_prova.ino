@@ -1,104 +1,93 @@
 #include <PubSubClient.h>
 #include <math.h>
+#include <SPI.h>
+#include <WiFi101.h>
+#include <Wire.h>
+#include "rgb_lcd.h"
+#include "arduino_secrets.h"
 
+// pin setting
+int BUTTON = 2;
+const int pinTempSensor = A0;     // Grove - Temperature Sensor connect to A0
+int triggerPort = 9;
+int echoPort = 10;
+
+// device variable
+rgb_lcd lcd;
+
+// another variable used in script
 const int B = 4275;               // B value of the thermistor
 const int R0 = 100000;            // R0 = 100k
 const int pinTempSensor = A0;     // Grove - Temperature Sensor connect to A0
-int BUTTON = 2; 
 int val;
 int d;
 int id = 1;
 
-int triggerPort = 9;
-int echoPort = 10;
-
-#include <Wire.h>
-#include "rgb_lcd.h"
-rgb_lcd lcd;
-
-#include <SPI.h>
-#include <WiFi101.h>
-#include "arduino_secrets.h"
-
+// setting varibale of wifi connection
 IPAddress ip(149, 132, 182, 63);
 IPAddress subnet(255, 255, 255, 0);
 IPAddress dns(149, 132, 2, 3);
 IPAddress gateway(149, 132, 182, 1);
-
 char ssid[] = SECRET_SSID;        // your network SSID (name)
 char pass[] = SECRET_PASS;
 int keyIndex = 0;                 // your network key Index number (needed only for WEP)
 int status = WL_IDLE_STATUS;
-
 WiFiClient qclient;
+
+// setting MQTT variable
 PubSubClient client(qclient);
-
 const char* mqttServer = "macman"; // 127.0.0.1 macman è il nostro localhost
-const int mqttPort = 1883; 
-//const char* mqttUser = "YourMQTTUsername"; 
-//const char* mqttPassword = "YourMQTTPassword";
+const int mqttPort = 1883;
 
-
-void setup(){
+void setup() {
   Serial.begin(9600);
-  WiFi.begin(ssid,pass);
+  WiFi.begin(ssid, pass);
   lcd.begin(16, 2);
   pinMode(BUTTON, INPUT);
-  //impostazione dei pin
   pinMode(triggerPort, OUTPUT);
   pinMode(echoPort, INPUT);
+  WiFi.config(ip, dns, gateway, subnet);
 }
 
-void loop(){
-  delay(500);
-  val = digitalRead(BUTTON);
-  delay(500); 
-  WiFi.config(ip, dns, gateway, subnet);
+// function in loop to connect in lose network
+void reconnected() {
+
   if (WiFi.status() != WL_CONNECTED) {
     Serial.print("Attempting to connect to SSID: ");
     Serial.println(SECRET_SSID);
-   
+
     while (WiFi.status() != WL_CONNECTED) {
       WiFi.begin(ssid, pass); // Connect to WPA/WPA2 network. Change this line if using open or WEP network
       Serial.println(".");
       delay(10000);
     }
+
     Serial.println("\nConnected");
     // you're connected now, so print out the status:
     printWifiStatus();
   }
+
+  // connection to broker MQTT
   client.setServer(mqttServer, mqttPort);
+}
+
+void loop() {
+
+  // function for MQTT (?)
+  client.loop();
+
+  if (!client.connected()) {
+    reconnected();
+  }
+
+  // function to set callback on topic subsribed
   //client.setCallback(callback);
 
-  client.publish("outTopic", "Hello world");
-  
-  if(val == HIGH){
-    int a = analogRead(pinTempSensor);
-    float R = 1023.0/a-1.0;
-    R = R0*R;
-    float f = 1.0/(log(R/R0)/B+1/298.15)-273.15; // convert to temperature via datasheet
-    delay(100);
-    d = distanza();  
-    Serial.print("Temperature: ");
-    Serial.println(f);
-    Serial.print("Distance: ");
-    Serial.print(d);
-    //lcd(colonna,riga)
-    lcd.setCursor(0,0);
-    lcd.print("Temp:");
-    lcd.setCursor(0,1);
-    lcd.print(f);
-    lcd.print(7,0);
-    lcd.print("Dist:");
-    lcd.setCursor(7,1);
-    lcd.print(d);
-
- }
-  //DELAY THINGSPEAK
-  //delay(20000);
- delay(5000);
- lcd.clear();
-
+  // publish a message roughly every second.
+  if (millis() - lastMillis > 1000) {
+    lastMillis = millis();
+    client.publish("outTopic", "Hello world");
+  }
 }
 
 
@@ -142,9 +131,9 @@ long distanza() // programmazione sensore sfr-05
   //invia un impulso di 10microsec su trigger
   digitalWrite(triggerPort, HIGH);
   delayMicroseconds(10);
-  digitalWrite(triggerPort,LOW);
+  digitalWrite(triggerPort, LOW);
   // prende in ingresso il segnale nella porta echo e tramite un calcolo trova distanza (r)
-  long duration = pulseIn( echoPort, HIGH); 
+  long duration = pulseIn( echoPort, HIGH);
   long r = 0.034 * duration / 2;
-  return r;   
+  return r;
 }
